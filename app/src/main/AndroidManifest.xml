@@ -1,14 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <queries>
-        <package android:name="com.google.android.tzdata3" />
-        <package android:name="com.android.tzdata" />
-        <package android:name="com.google.android.tzdata" />
-        <package android:name="com.google.android.tzdata2" />
-        <package android:name="com.google.android.tzdata4" />
-        <package android:name="com.google.android.i18n" />
-        <package android:name="com.android.i18n" />
-    </queries>
     <application android:label="tzdata version">
         <activity
             android:name=".MainActivity"

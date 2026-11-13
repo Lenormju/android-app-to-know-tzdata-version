@@ -1,12 +1,14 @@
 package dev.tzv
 
-import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.pm.PackageInfo
-import android.os.Build
 import android.os.Bundle
+import android.util.Xml
+import org.xmlpull.v1.XmlPullParser
 import android.widget.TextView
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -18,10 +20,8 @@ class MainActivity : Activity() {
         }.getOrElse { "n/a: $it" }
         val javaTz = java.util.TimeZone.getDefault().id
 
-        val tzApex = runCatching { apexVersion("tzdata", listOf("com.google.android.tzdata3", "com.android.tzdata", "com.google.android.tzdata")) }
-            .getOrElse { "n/a: $it" }
-        val i18nApex = runCatching { apexVersion("i18n", listOf("com.google.android.i18n", "com.android.i18n")) }
-            .getOrElse { "n/a: $it" }
+        val tzApex = apexVersion("tzdata")
+        val i18nApex = apexVersion("i18n")
 
         setContentView(TextView(this).apply {
             textSize = 20f
@@ -31,21 +31,42 @@ class MainActivity : Activity() {
         })
     }
 
-    @SuppressLint("QueryPermissionsNeeded")
-    @Suppress("DEPRECATION")
-    private fun apexVersion(keyword: String, candidates: List<String>): String {
-        if (Build.VERSION.SDK_INT < 29) return "n/a (API < 29)"
-        val flags = 0x40000000 // PackageManager.MATCH_APEX
-        val found = LinkedHashMap<String, PackageInfo>()
-        candidates.forEach { name ->
-            runCatching { packageManager.getPackageInfo(name, flags) }.getOrNull()?.let { found[name] = it }
+    /** Version of the APEX module com.android.<name>, read from the filesystem (no permission needed). */
+    private fun apexVersion(name: String): String {
+        val module = "com.android.$name"
+        val infoList = runCatching { fromInfoList(module, name) }
+        infoList.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return "[apex-info-list.xml] " + it.joinToString("; ") }
+        val dir = runCatching { fromApexDir(module, name) }
+        dir.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return "[/apex dir] " + it.joinToString("; ") }
+        fun reason(r: Result<List<String>>) = r.exceptionOrNull()?.toString() ?: "no matching entry"
+        return "n/a: apex-info-list.xml: ${reason(infoList)}; /apex dir: ${reason(dir)}"
+    }
+
+    private fun fromInfoList(module: String, keyword: String): List<String> {
+        val result = ArrayList<String>()
+        val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        File("/apex/apex-info-list.xml").inputStream().use { input ->
+            val parser = Xml.newPullParser()
+            parser.setInput(input, null)
+            var event = parser.eventType
+            while (event != XmlPullParser.END_DOCUMENT) {
+                if (event == XmlPullParser.START_TAG && parser.name == "apex-info") {
+                    fun attr(n: String) = parser.getAttributeValue(null, n)
+                    val moduleName = attr("moduleName") ?: ""
+                    if (moduleName == module || moduleName.contains(keyword)) {
+                        val updated = attr("lastUpdateMillis")?.toLongOrNull()?.let { " updated=" + format.format(Date(it)) } ?: ""
+                        result.add("$moduleName versionCode=${attr("versionCode")} isFactory=${attr("isFactory")} isActive=${attr("isActive")}$updated")
+                    }
+                }
+                event = parser.next()
+            }
         }
-        runCatching { packageManager.getInstalledPackages(flags) }.getOrNull()
-            ?.filter { it.packageName.contains(keyword) }
-            ?.forEach { found.putIfAbsent(it.packageName, it) }
-        if (found.isEmpty()) return "n/a: not visible"
-        return found.values.joinToString("; ") {
-            "${it.packageName} versionCode=${it.longVersionCode} versionName=${it.versionName}"
-        }
+        return result
+    }
+
+    private fun fromApexDir(module: String, keyword: String): List<String> {
+        val names = File("/apex").list() ?: throw java.io.IOException("cannot list /apex")
+        return names.filter { it.startsWith(module) || it.contains(keyword) }.sorted()
+            .map { if ("@" in it) "$it (versionCode=${it.substringAfter('@')})" else it }
     }
 }
