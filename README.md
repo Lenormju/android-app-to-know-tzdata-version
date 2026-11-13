@@ -7,6 +7,7 @@ Tiny Android app that shows the device's tzdata version, to compare before and a
 - ICU tzdata version: `android.icu.util.TimeZone.getTZDataVersion()`
 - Content of `/apex/com.android.tzdata/etc/tz/tz_version`, format `<format>.<IANA version>.<revision>` (e.g. `004.2025b.001`). May show `n/a` if SELinux blocks the read.
 - Default `java.util.TimeZone` id
+- Version (package name, `versionName`, `longVersionCode`) of the tzdata and i18n (ICU) APEX modules, read via `PackageManager` with `MATCH_APEX` (API 29+, no permission). Shows `n/a: not visible` if the package is hidden.
 
 ## Install
 
